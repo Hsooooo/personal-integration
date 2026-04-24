@@ -20,6 +20,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redis_data:/data
+    # Internal only - no host port needed
+    networks:
+      - pi_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   neo4j:
     image: neo4j:5.26-community
     restart: always
@@ -60,6 +74,8 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production-32-char-min}
       - WORKER_TOKEN=${WORKER_TOKEN:-worker-secret-token}
       - ENV=${ENV:-production}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "127.0.0.1:8000:8000"
     networks:
@@ -82,6 +98,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
       - BACKEND_URL=http://backend:8000
       - WORKER_TOKEN=${WORKER_TOKEN:-worker-secret-token}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-32-char-min}
     volumes:
       - garmin_tokens:/root/.garminconnect
     networks:
@@ -102,6 +121,7 @@ volumes:
   neo4j_data:
   neo4j_logs:
   garmin_tokens:
+  redis_data:
 
 networks:
   pi_net:

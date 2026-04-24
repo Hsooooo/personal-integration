@@ -1,15 +1,39 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+
+from app.auth import get_current_active_user
+from app.models.user import User
+from app.services.redis_stream import redis_producer
 
 router = APIRouter()
 
 
 @router.post("/sync")
-def trigger_garmin_sync():
-    # In PoC, the worker runs on its own schedule.
-    # This endpoint can be extended to trigger immediate sync via a message queue.
-    return {"message": "Garmin sync is handled by the worker. It runs every 30 minutes."}
+async def trigger_garmin_sync(
+    sync_type: str = "full",
+    current_user: User = Depends(get_current_active_user),
+):
+    if not current_user.garmin_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Garmin credentials not configured. Please set them in Settings.",
+        )
+
+    msg_id = redis_producer.publish_sync_job(current_user.id, sync_type)
+    return {
+        "status": "queued",
+        "message_id": msg_id,
+        "sync_type": sync_type,
+        "user_id": current_user.id,
+    }
 
 
 @router.get("/status")
-def garmin_status():
-    return {"status": "Worker runs on schedule", "interval_min": 30}
+async def garmin_status(
+    current_user: User = Depends(get_current_active_user),
+):
+    pending = redis_producer.get_pending_count()
+    return {
+        "status": "active",
+        "pending_jobs": pending,
+        "user_garmin_configured": bool(current_user.garmin_email),
+    }

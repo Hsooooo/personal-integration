@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import GraphPage from './pages/GraphPage';
+import SettingsPage from './pages/SettingsPage';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -25,6 +26,7 @@ function App() {
           }>
             <Route index element={<DashboardPage />} />
             <Route path="graph" element={<GraphPage />} />
+            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </BrowserRouter>
