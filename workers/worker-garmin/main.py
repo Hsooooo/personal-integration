@@ -25,6 +25,7 @@ POSTGRES_DB = os.getenv("POSTGRES_DB", "pi_db")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "pi_user")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "password")
 BACKEND_URL = os.getenv("BACKEND_URL", "http://backend:8000")
+WORKER_TOKEN = os.getenv("WORKER_TOKEN", "worker-secret-token")
 
 MAX_RETRIES = 3
 RETRY_DELAY_BASE = 5
@@ -143,6 +144,56 @@ def save_activity(activity: dict[str, Any]):
     logger.info(f"Saved activity {activity['activity_id']}: {activity.get('activity_name')}")
 
 
+def save_activity_laps(activity_id: int, laps: list[dict]):
+    if not laps:
+        return
+    conn = get_db_connection()
+    cur = conn.cursor()
+    for idx, lap in enumerate(laps, start=1):
+        avg_speed = lap.get("averageSpeed")
+        avg_pace = None
+        if avg_speed and avg_speed > 0:
+            pace_sec_per_km = 1000 / float(avg_speed)
+            minutes = int(pace_sec_per_km // 60)
+            seconds = int(pace_sec_per_km % 60)
+            avg_pace = f"{minutes}:{seconds:02d}"
+
+        cur.execute(
+            """
+            INSERT INTO exercise_lap (
+                activity_id, lap_index, start_time_gmt,
+                distance_meters, duration_sec, avg_speed_mps, avg_pace,
+                avg_hr, max_hr, raw_data
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (activity_id, lap_index) DO UPDATE SET
+                start_time_gmt = EXCLUDED.start_time_gmt,
+                distance_meters = EXCLUDED.distance_meters,
+                duration_sec = EXCLUDED.duration_sec,
+                avg_speed_mps = EXCLUDED.avg_speed_mps,
+                avg_pace = EXCLUDED.avg_pace,
+                avg_hr = EXCLUDED.avg_hr,
+                max_hr = EXCLUDED.max_hr,
+                raw_data = EXCLUDED.raw_data;
+            """,
+            (
+                activity_id,
+                idx,
+                lap.get("startTimeGMT"),
+                lap.get("distance"),
+                lap.get("duration"),
+                avg_speed,
+                avg_pace,
+                lap.get("averageHR"),
+                lap.get("maxHR"),
+                Json(lap),
+            ),
+        )
+    conn.commit()
+    cur.close()
+    conn.close()
+    logger.info(f"Saved {len(laps)} laps for activity {activity_id}")
+
+
 def format_pace(speed_mps):
     if not speed_mps or speed_mps <= 0:
         return None
@@ -155,11 +206,8 @@ def format_pace(speed_mps):
 def login_garmin() -> Garmin:
     os.makedirs(TOKEN_DIR, exist_ok=True)
     client = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-    # v0.3.0+: login() handles token save/load internally at ~/.garminconnect by default
-    # We pass the token_dir explicitly to be safe.
     try:
         client.login(TOKEN_DIR)
-        # Validate
         client.get_user_summary(datetime.date.today().isoformat())
         logger.info("Garmin session loaded and validated.")
         return client
@@ -198,6 +246,13 @@ def sync_activities(client: Garmin):
                     "raw_data": act,
                 }
                 save_activity(activity_data)
+
+                try:
+                    splits = client.get_activity_splits(activity_id)
+                    laps = splits.get("lapDTOs", []) if isinstance(splits, dict) else []
+                    save_activity_laps(activity_id, laps)
+                except Exception as e:
+                    logger.warning(f"Failed to fetch/save laps for activity {activity_id}: {e}")
             except Exception as e:
                 logger.error(f"Failed to process activity {act.get('activityId')}: {e}")
                 continue
@@ -206,9 +261,14 @@ def sync_activities(client: Garmin):
         logger.error(f"Failed to sync activities: {e}")
 
 
-def trigger_backend_sync():
+def notify_graph_sync(since: str | None = None):
     try:
-        resp = httpx.post(f"{BACKEND_URL}/api/graph/sync", timeout=30.0)
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/v1/graph/sync",
+            headers={"X-Worker-Token": WORKER_TOKEN},
+            params={"since": since} if since else None,
+            timeout=60.0,
+        )
         resp.raise_for_status()
         logger.info(f"Triggered backend graph sync: {resp.json()}")
     except Exception as e:
@@ -282,8 +342,8 @@ def run_sync():
         else:
             logger.info("Sync completed successfully with no errors.")
 
-        # Trigger graph sync in backend
-        trigger_backend_sync()
+        # Trigger graph sync
+        notify_graph_sync()
 
     except Exception as e:
         import traceback

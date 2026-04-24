@@ -14,8 +14,8 @@ export default function SyncButton() {
     setResult(null);
     setError(null);
     try {
-      const res = await api.syncGraph();
-      setResult(res);
+      const res = await api.post('/graph/sync');
+      setResult(res.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

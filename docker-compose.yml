@@ -53,9 +53,13 @@ services:
       - POSTGRES_DB=${POSTGRES_DB:-pi_db}
       - POSTGRES_USER=${POSTGRES_USER:-pi_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-pi_user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-pi_db}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-32-char-min}
+      - WORKER_TOKEN=${WORKER_TOKEN:-worker-secret-token}
+      - ENV=${ENV:-production}
     ports:
       - "127.0.0.1:8000:8000"
     networks:
@@ -77,6 +81,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-pi_user}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
       - BACKEND_URL=http://backend:8000
+      - WORKER_TOKEN=${WORKER_TOKEN:-worker-secret-token}
     volumes:
       - garmin_tokens:/root/.garminconnect
     networks:

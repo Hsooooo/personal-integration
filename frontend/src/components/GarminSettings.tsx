@@ -10,9 +10,9 @@ export default function GarminSettings() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.health()
-      .then(setHealth)
-      .catch((e) => console.error(e))
+    api.get('/health')
+      .then((res) => setHealth(res.data))
+      .catch((e: any) => console.error(e))
       .finally(() => setLoading(false));
   }, []);
 

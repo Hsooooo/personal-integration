@@ -1,11 +1,12 @@
-import os
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.ext.asyncio import AsyncEngine
 
-from app.routers import activities, graph, garmin
+from app.routers import activities, graph, garmin, auth, user
+from app.database import engine, Base
 from app.services.postgres import pg_service
 from app.services.neo4j import neo4j_service
 
@@ -19,7 +20,13 @@ logger = logging.getLogger("backend")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up backend...")
+    # Create SQLAlchemy tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    # Init legacy raw tables (for worker compatibility)
     pg_service.init_tables()
+    # Setup Neo4j constraints
+    neo4j_service.setup_constraints()
     yield
     logger.info("Shutting down backend...")
     pg_service.close()
@@ -36,9 +43,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(activities.router, prefix="/api/activities", tags=["activities"])
-app.include_router(graph.router, prefix="/api/graph", tags=["graph"])
-app.include_router(garmin.router, prefix="/api/garmin", tags=["garmin"])
+# v1 routers
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(user.router, prefix="/api/v1/users", tags=["users"])
+app.include_router(activities.router, prefix="/api/v1/activities", tags=["activities"])
+app.include_router(graph.router, prefix="/api/v1/graph", tags=["graph"])
+app.include_router(garmin.router, prefix="/api/v1/garmin", tags=["garmin"])
 
 
 @app.get("/health")

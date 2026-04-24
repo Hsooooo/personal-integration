@@ -6,3 +6,12 @@ pydantic==2.11.0
 pydantic-settings==2.8.0
 python-dotenv==1.1.0
 httpx==0.28.0
+sqlalchemy[asyncio]==2.0.40
+asyncpg==0.30.0
+alembic==1.15.0
+python-jose[cryptography]==3.4.0
+bcrypt==4.2.0
+passlib[bcrypt]==1.7.4
+cryptography==44.0.0
+email-validator==2.2.0
+python-multipart==0.0.20
