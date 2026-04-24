@@ -12,6 +12,7 @@ from app.models.schemas import (
     ActivityDetailOut,
     ExerciseLapOut,
     WeeklyStat,
+    ActivityUpdate,
 )
 from app.models.garmin import ExerciseActivity, ExerciseLap
 from app.models.user import User
@@ -100,6 +101,47 @@ async def trigger_sync(
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Sync failed: {e}")
+
+
+@router.patch("/{activity_id}", response_model=ExerciseActivityOut)
+async def update_activity(
+    activity_id: int,
+    body: ActivityUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    result = await db.execute(
+        select(ExerciseActivity).where(ExerciseActivity.activity_id == activity_id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if body.is_race is not None:
+        activity.is_race = body.is_race
+    if body.race_type is not None:
+        activity.race_type = body.race_type
+    if body.race_prep_weeks is not None:
+        activity.race_prep_weeks = body.race_prep_weeks
+
+    # Validation: if marking as race, race_type is required
+    if activity.is_race and not activity.race_type:
+        raise HTTPException(status_code=400, detail="race_type is required when is_race=True")
+
+    await db.commit()
+    await db.refresh(activity)
+
+    # Publish to Redis Stream for async graph sync
+    if activity.is_race and activity.race_type:
+        from app.services.redis_stream import redis_producer
+        redis_producer.publish_race_classify_job(
+            current_user.id,
+            activity.activity_id,
+            activity.race_type,
+            activity.race_prep_weeks or 12,
+        )
+
+    return activity
 
 
 @router.get("/stats/weekly", response_model=list[WeeklyStat])

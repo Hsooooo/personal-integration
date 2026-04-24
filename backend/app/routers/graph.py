@@ -15,6 +15,7 @@ from app.models.schemas import (
     CypherQuery,
     GraphSchema,
     RaceComparison,
+    RaceSyncRequest,
 )
 from app.models.user import User
 from app.services.postgres import pg_service
@@ -133,6 +134,29 @@ async def graph_schema(
     current_user: User = Depends(get_current_active_user),
 ):
     return neo4j_service.get_schema()
+
+
+@router.post("/race-sync")
+async def sync_race_to_graph(
+    body: RaceSyncRequest,
+    x_worker_token: str | None = Header(None, alias="X-Worker-Token"),
+    db: AsyncSession = Depends(get_db),
+):
+    _verify_worker_token(x_worker_token)
+
+    result = await db.execute(
+        select(ExerciseActivity).where(ExerciseActivity.activity_id == body.activity_id)
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    neo4j_service.sync_race(
+        body.activity_id,
+        _obj_to_dict(activity),
+        body.prep_weeks,
+    )
+    return {"status": "success", "activity_id": body.activity_id, "race_type": body.race_type}
 
 
 @router.post("/race-comparison")

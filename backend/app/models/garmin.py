@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, Integer, String, Numeric, DateTime, Date, JSON, ForeignKey, func
+from sqlalchemy import BigInteger, Integer, String, Numeric, DateTime, Date, JSON, ForeignKey, Boolean, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -21,6 +21,9 @@ class ExerciseActivity(Base):
     avg_pace: Mapped[str | None] = mapped_column(String(10), nullable=True)
     elevation_gain: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     calories: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_race: Mapped[bool] = mapped_column(Boolean, default=False)
+    race_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    race_prep_weeks: Mapped[int | None] = mapped_column(Integer, default=12)
     raw_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

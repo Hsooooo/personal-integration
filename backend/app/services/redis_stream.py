@@ -35,6 +35,27 @@ class RedisStreamProducer:
         logger.info(f"Published sync job {msg_id} for user {user_id} (type={sync_type})")
         return msg_id
 
+    def publish_race_classify_job(
+        self,
+        user_id: int,
+        activity_id: int,
+        race_type: str,
+        prep_weeks: int = 12,
+    ) -> str:
+        message = {
+            "job_type": "race_classify",
+            "user_id": str(user_id),
+            "activity_id": str(activity_id),
+            "race_type": race_type,
+            "prep_weeks": str(prep_weeks),
+        }
+        msg_id = self.client.xadd(STREAM_NAME, message)
+        logger.info(
+            f"Published race classify job {msg_id} for activity {activity_id} "
+            f"(type={race_type}, prep={prep_weeks}w)"
+        )
+        return msg_id
+
     def get_pending_count(self) -> int:
         try:
             info = self.client.xinfo_stream(STREAM_NAME)

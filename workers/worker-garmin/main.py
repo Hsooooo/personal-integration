@@ -361,8 +361,8 @@ def notify_graph_sync(since: str | None = None):
         logger.warning(f"Failed to trigger backend graph sync: {e}")
 
 
-def process_sync_job(user_id: int, sync_type: str):
-    logger.info(f"Processing sync job for user {user_id}, type={sync_type}")
+def process_garmin_sync(user_id: int, sync_type: str):
+    logger.info(f"Processing Garmin sync job for user {user_id}, type={sync_type}")
 
     email, password = get_user_credentials(user_id)
     if not email or not password:
@@ -376,10 +376,33 @@ def process_sync_job(user_id: int, sync_type: str):
     notify_graph_sync()
 
     logger.info(
-        f"Sync job completed for user {user_id}: "
+        f"Garmin sync job completed for user {user_id}: "
         f"{activity_count} activities, {health_count} health records"
     )
     return {"activities": activity_count, "health": health_count}
+
+
+def process_race_classification(activity_id: int, race_type: str, prep_weeks: int):
+    logger.info(
+        f"Processing race classification for activity {activity_id} "
+        f"(type={race_type}, prep={prep_weeks}w)"
+    )
+    try:
+        resp = httpx.post(
+            f"{BACKEND_URL}/api/v1/graph/race-sync",
+            headers={"X-Worker-Token": WORKER_TOKEN},
+            json={
+                "activity_id": activity_id,
+                "race_type": race_type,
+                "prep_weeks": prep_weeks,
+            },
+            timeout=60.0,
+        )
+        resp.raise_for_status()
+        logger.info(f"Race sync triggered: {resp.json()}")
+    except Exception as e:
+        logger.error(f"Failed to trigger race sync for activity {activity_id}: {e}")
+        raise
 
 
 def main():
@@ -411,15 +434,25 @@ def main():
 
             for stream_name, entries in messages:
                 for entry_id, fields in entries:
+                    job_type = fields.get("job_type", "garmin_sync")
                     user_id = int(fields.get("user_id"))
-                    sync_type = fields.get("sync_type", "full")
 
                     try:
-                        process_sync_job(user_id, sync_type)
+                        if job_type == "garmin_sync":
+                            sync_type = fields.get("sync_type", "full")
+                            process_garmin_sync(user_id, sync_type)
+                        elif job_type == "race_classify":
+                            activity_id = int(fields.get("activity_id"))
+                            race_type = fields.get("race_type")
+                            prep_weeks = int(fields.get("prep_weeks", "12"))
+                            process_race_classification(activity_id, race_type, prep_weeks)
+                        else:
+                            logger.warning(f"Unknown job_type: {job_type}")
+
                         redis_client.xack(STREAM_NAME, CONSUMER_GROUP, entry_id)
-                        logger.info(f"Job {entry_id} completed and acknowledged for user {user_id}")
+                        logger.info(f"Job {entry_id} ({job_type}) completed and acknowledged")
                     except Exception as e:
-                        logger.error(f"Job {entry_id} failed for user {user_id}: {e}")
+                        logger.error(f"Job {entry_id} ({job_type}) failed: {e}")
                         # Do not ACK - the message will remain pending for retry
 
         except Exception as e:

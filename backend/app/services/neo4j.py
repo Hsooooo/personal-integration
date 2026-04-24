@@ -239,6 +239,119 @@ class Neo4jService:
                 )
         logger.info(f"Synced {len(records)} daily health records to Neo4j.")
 
+    def sync_race(
+        self,
+        activity_id: int,
+        activity_data: dict[str, Any],
+        prep_weeks: int = 12,
+        person_name: str = "한수",
+    ):
+        if not self.driver:
+            logger.warning("Neo4j driver not available, skipping race sync")
+            return
+
+        st = activity_data.get("start_time")
+        if not st:
+            logger.warning(f"Activity {activity_id} has no start_time, skipping race sync")
+            return
+
+        try:
+            race_dt = datetime.fromisoformat(str(st).replace("Z", "+00:00"))
+            start_dt = race_dt - __import__("datetime").timedelta(weeks=prep_weeks)
+
+            def _yw(dt):
+                y, w, _ = dt.isocalendar()
+                return y * 100 + w
+
+            start_yw = _yw(start_dt)
+            race_yw = _yw(race_dt)
+        except Exception as e:
+            logger.warning(f"Failed to compute prep weeks for activity {activity_id}: {e}")
+            return
+
+        with self.driver.session() as session:
+            # Create Race node
+            session.run(
+                """
+                MERGE (r:Race {id: $id})
+                SET r.name = $name,
+                    r.date = $date,
+                    r.distanceKm = $dist,
+                    r.durationMin = $dur,
+                    r.avgPace = $pace,
+                    r.avgHr = $ahr,
+                    r.maxHr = $mhr,
+                    r.type = $race_type
+                """,
+                id=activity_id,
+                name=activity_data.get("activity_name"),
+                date=str(st),
+                dist=round(float(activity_data.get("distance_meters") or 0) / 1000, 2)
+                if activity_data.get("distance_meters")
+                else None,
+                dur=round(float(activity_data.get("duration_sec") or 0) / 60, 2)
+                if activity_data.get("duration_sec")
+                else None,
+                pace=activity_data.get("avg_pace"),
+                ahr=activity_data.get("avg_hr"),
+                mhr=activity_data.get("max_hr"),
+                race_type=activity_data.get("race_type"),
+            )
+
+            # Link Activity → Race
+            session.run(
+                """
+                MATCH (a:Activity {id: $aid})
+                MATCH (r:Race {id: $rid})
+                MERGE (a)-[:IS_RACE]->(r)
+                """,
+                aid=activity_id,
+                rid=activity_id,
+            )
+
+            # Link Person → Race (PERFORMED)
+            session.run(
+                """
+                MATCH (p:Person {name: $pname})
+                MATCH (r:Race {id: $rid})
+                MERGE (p)-[:PERFORMED]->(r)
+                """,
+                pname=person_name,
+                rid=activity_id,
+            )
+
+            # Link TrainingBlocks in prep period → Race
+            session.run(
+                """
+                MATCH (r:Race {id: $rid})
+                MATCH (t:TrainingBlock)
+                WHERE (t.year * 100 + t.week) >= $start_yw
+                  AND (t.year * 100 + t.week) <= $race_yw
+                MERGE (t)-[:PREPARES_FOR]->(r)
+                """,
+                rid=activity_id,
+                start_yw=start_yw,
+                race_yw=race_yw,
+            )
+
+            # Similar effort races (same type, ±2km)
+            session.run(
+                """
+                MATCH (r:Race {id: $rid})
+                MATCH (other:Race)
+                WHERE other.id <> r.id
+                  AND other.type = r.type
+                  AND abs(coalesce(other.distanceKm, 0) - coalesce(r.distanceKm, 0)) < 2
+                MERGE (r)-[:SIMILAR_EFFORT]->(other)
+                """,
+                rid=activity_id,
+            )
+
+        logger.info(
+            f"Synced race {activity_id} ({activity_data.get('race_type')}) to Neo4j, "
+            f"prep weeks: {prep_weeks} ({start_yw} ~ {race_yw})"
+        )
+
     def get_graph_data(self, limit: int = 100) -> dict[str, Any]:
         if not self.driver:
             return {"nodes": [], "edges": []}

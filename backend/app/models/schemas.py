@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 # ------------------- Auth -------------------
@@ -57,6 +57,9 @@ class ExerciseActivityOut(BaseModel):
     avg_pace: Optional[str] = None
     calories: Optional[int] = None
     elevation_gain: Optional[Decimal] = None
+    is_race: bool = False
+    race_type: Optional[str] = None
+    race_prep_weeks: Optional[int] = 12
 
 
 class ExerciseLapOut(BaseModel):
@@ -73,6 +76,12 @@ class ExerciseLapOut(BaseModel):
 
 class ActivityDetailOut(ExerciseActivityOut):
     laps: list[ExerciseLapOut] = []
+
+
+class ActivityUpdate(BaseModel):
+    is_race: Optional[bool] = None
+    race_type: Optional[str] = Field(None, pattern=r"^(10k|half|full)$")
+    race_prep_weeks: Optional[int] = Field(None, ge=4, le=16)
 
 
 class PaginatedActivities(BaseModel):
@@ -125,3 +134,9 @@ class GraphSchema(BaseModel):
 
 class RaceComparison(BaseModel):
     race_ids: list[str]
+
+
+class RaceSyncRequest(BaseModel):
+    activity_id: int
+    race_type: str
+    prep_weeks: int = 12

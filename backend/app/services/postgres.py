@@ -80,6 +80,9 @@ class PostgresService:
                     avg_pace TEXT,
                     calories INTEGER,
                     elevation_gain NUMERIC,
+                    is_race BOOLEAN DEFAULT FALSE,
+                    race_type TEXT,
+                    race_prep_weeks INTEGER DEFAULT 12,
                     raw_data JSONB,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
