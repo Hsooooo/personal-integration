@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '../api/client';
 import { ChevronLeft, ChevronRight, MoreHorizontal, Flag } from 'lucide-react';
 
@@ -33,6 +33,7 @@ export default function ActivityTable() {
   const [menuOpen, setMenuOpen] = useState<number | null>(null);
   const [tagging, setTagging] = useState<number | null>(null);
   const [toast, setToast] = useState('');
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -51,6 +52,17 @@ export default function ActivityTable() {
     fetchData();
   }, [limit, offset]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const tagRace = async (activityId: number, raceType: string, prepWeeks: number) => {
     setTagging(activityId);
     try {
@@ -59,7 +71,7 @@ export default function ActivityTable() {
         race_type: raceType,
         race_prep_weeks: prepWeeks,
       });
-      setToast(`Tagged as ${raceType}. Graph update queued.`);
+      setToast(`🏁 Tagged as ${raceType} (${prepWeeks}w prep). Graph update queued.`);
       await fetchData();
     } catch (err: any) {
       setToast(err.response?.data?.detail || 'Failed to tag race');
@@ -158,7 +170,10 @@ export default function ActivityTable() {
                   <td className="px-6 py-3 text-sky-400">{a.avg_pace || '-'}</td>
                   <td className="px-6 py-3 relative">
                     <button
-                      onClick={() => setMenuOpen(menuOpen === a.activity_id ? null : a.activity_id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuOpen(menuOpen === a.activity_id ? null : a.activity_id);
+                      }}
                       disabled={tagging === a.activity_id}
                       className="p-1.5 rounded hover:bg-slate-700 text-slate-400 transition-colors"
                     >
@@ -170,40 +185,36 @@ export default function ActivityTable() {
                     </button>
 
                     {menuOpen === a.activity_id && (
-                      <div className="absolute right-4 top-10 z-20 w-48 bg-slate-700 border border-slate-600 rounded-lg shadow-xl overflow-hidden">
+                      <div
+                        ref={menuRef}
+                        className="absolute right-4 top-10 z-20 w-56 bg-slate-700 border border-slate-600 rounded-lg shadow-xl overflow-hidden"
+                      >
                         {a.is_race ? (
                           <button
                             onClick={() => removeRace(a.activity_id)}
-                            className="w-full px-4 py-2 text-left text-sm text-rose-300 hover:bg-slate-600 transition-colors"
+                            className="w-full px-4 py-2.5 text-left text-sm text-rose-300 hover:bg-slate-600 transition-colors"
                           >
-                            Remove Race
+                            ❌ Remove Race
                           </button>
                         ) : (
-                          <div>
+                          <div className="py-1">
                             <div className="px-4 py-2 text-xs text-slate-400 font-medium border-b border-slate-600">
-                              Mark as Race
+                              🏁 Mark as Race
                             </div>
-                            {RACE_OPTIONS.map((opt) => (
-                              <div key={opt.value} className="group relative">
-                                <button
-                                  className="w-full px-4 py-2 text-left text-sm text-slate-200 hover:bg-slate-600 transition-colors"
-                                >
-                                  {opt.label}
-                                </button>
-                                <div className="absolute left-full top-0 ml-1 w-32 bg-slate-700 border border-slate-600 rounded-lg shadow-xl hidden group-hover:block">
-                                  <div className="px-3 py-1.5 text-xs text-slate-400 border-b border-slate-600">Prep weeks</div>
-                                  {PREP_WEEKS.map((w) => (
-                                    <button
-                                      key={w}
-                                      onClick={() => tagRace(a.activity_id, opt.value, w)}
-                                      className="w-full px-3 py-1.5 text-left text-sm text-slate-200 hover:bg-slate-600 transition-colors"
-                                    >
-                                      {w}w
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            ))}
+                            <div className="grid grid-cols-2 gap-px bg-slate-600">
+                              {RACE_OPTIONS.flatMap((opt) =>
+                                PREP_WEEKS.map((w) => (
+                                  <button
+                                    key={`${opt.value}-${w}`}
+                                    onClick={() => tagRace(a.activity_id, opt.value, w)}
+                                    className="px-3 py-2 text-left text-sm text-slate-200 hover:bg-slate-600 transition-colors bg-slate-700"
+                                  >
+                                    <span className="font-medium">{opt.label}</span>
+                                    <span className="text-slate-400 text-xs ml-1">{w}w</span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
