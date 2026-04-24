@@ -48,15 +48,29 @@ export default function SettingsPage() {
     }
   };
 
-  const handleSync = async () => {
+  const handleFullSync = async () => {
     setSyncing(true);
     setSyncMsg('');
     try {
       const res = await api.post('/garmin/sync?sync_type=full');
-      setSyncMsg(`Sync queued: ${res.data.message_id}`);
+      setSyncMsg(`Full sync queued: ${res.data.message_id}`);
       fetchStatus();
     } catch (err: any) {
-      setSyncMsg(err.response?.data?.detail || 'Failed to trigger sync');
+      setSyncMsg(err.response?.data?.detail || 'Failed to trigger full sync');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleGraphSync = async () => {
+    setSyncing(true);
+    setSyncMsg('');
+    try {
+      const res = await api.post('/activities/sync');
+      setSyncMsg(`Graph sync completed: ${res.data.activities_synced} activities, ${res.data.health_synced} health records`);
+      fetchStatus();
+    } catch (err: any) {
+      setSyncMsg(err.response?.data?.detail || 'Failed to trigger graph sync');
     } finally {
       setSyncing(false);
     }
@@ -121,14 +135,22 @@ export default function SettingsPage() {
         <p className="text-sm text-slate-400">
           Trigger a full Garmin sync (all activities + 30 days health). The job is queued via Redis Stream and processed by the worker.
         </p>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <button
-            onClick={handleSync}
+            onClick={handleFullSync}
             disabled={syncing || !syncStatus?.user_garmin_configured}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-medium rounded-lg transition-colors disabled:opacity-50"
           >
             <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-            {syncing ? 'Queueing...' : 'Full Sync Now'}
+            {syncing ? 'Queueing...' : 'Full Garmin Sync'}
+          </button>
+          <button
+            onClick={handleGraphSync}
+            disabled={syncing}
+            className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium rounded-lg transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Syncing...' : 'Graph Sync Only'}
           </button>
           {syncStatus && (
             <span className="text-sm text-slate-400">

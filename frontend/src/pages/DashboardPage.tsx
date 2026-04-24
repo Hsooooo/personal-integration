@@ -62,7 +62,7 @@ export default function DashboardPage() {
           className="flex items-center gap-2 px-4 py-2 bg-sky-500 hover:bg-sky-400 text-slate-900 font-medium rounded-lg transition-colors disabled:opacity-50"
         >
           <RefreshCw size={16} className={syncing ? 'animate-spin' : ''} />
-          {syncing ? 'Syncing...' : 'Sync Now'}
+          {syncing ? 'Syncing...' : 'Graph Sync'}
         </button>
       </div>
       {lastSync && (

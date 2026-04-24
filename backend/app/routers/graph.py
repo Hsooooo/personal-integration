@@ -1,5 +1,6 @@
 from typing import Any
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy import select, text
@@ -18,6 +19,18 @@ from app.models.schemas import (
 from app.models.user import User
 from app.services.postgres import pg_service
 from app.services.neo4j import neo4j_service
+
+
+def _obj_to_dict(obj) -> dict[str, Any]:
+    """Convert SQLAlchemy object to plain dict, handling Decimal and SQLAlchemy internals."""
+    d = obj.__dict__.copy()
+    d.pop("_sa_instance_state", None)
+    for k, v in list(d.items()):
+        if isinstance(v, Decimal):
+            d[k] = float(v)
+        elif isinstance(v, datetime):
+            d[k] = v.isoformat()
+    return d
 
 router = APIRouter()
 
@@ -80,9 +93,9 @@ async def sync_graph(
     health_records = health_result.scalars().all()
 
     # Sync to Neo4j
-    neo4j_service.sync_activities([a.__dict__ for a in activities])
-    neo4j_service.sync_laps([l.__dict__ for l in laps])
-    neo4j_service.sync_health_daily([h.__dict__ for h in health_records])
+    neo4j_service.sync_activities([_obj_to_dict(a) for a in activities])
+    neo4j_service.sync_laps([_obj_to_dict(l) for l in laps])
+    neo4j_service.sync_health_daily([_obj_to_dict(h) for h in health_records])
 
     return {
         "status": "success",
