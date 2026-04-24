@@ -19,6 +19,7 @@ from app.models.user import User
 router = APIRouter()
 
 
+@router.get("", response_model=PaginatedActivities)
 @router.get("/", response_model=PaginatedActivities)
 async def list_activities(
     limit: int = 20,
