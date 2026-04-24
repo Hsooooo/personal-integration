@@ -1,0 +1,7 @@
+garminconnect>=0.3.0
+curl_cffi
+ua-generator
+psycopg2-binary
+schedule
+python-dotenv
+httpx

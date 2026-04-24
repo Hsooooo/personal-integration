@@ -1,0 +1,103 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pi_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-pi_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - pi_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pi_user} -d ${POSTGRES_DB:-pi_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  neo4j:
+    image: neo4j:5.26-community
+    restart: always
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
+      NEO4J_PLUGINS: '["apoc"]'
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    networks:
+      - pi_net
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-pi_db}
+      - POSTGRES_USER=${POSTGRES_USER:-pi_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-password}
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks:
+      - pi_net
+
+  worker-garmin:
+    build: ./workers/worker-garmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - TZ=${TZ:-Asia/Seoul}
+      - GARMIN_EMAIL=${GARMIN_EMAIL}
+      - GARMIN_PASSWORD=${GARMIN_PASSWORD}
+      - GARMIN_SYNC_INTERVAL_MIN=${GARMIN_SYNC_INTERVAL_MIN:-30}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-pi_db}
+      - POSTGRES_USER=${POSTGRES_USER:-pi_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-password}
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - garmin_tokens:/root/.garminconnect
+    networks:
+      - pi_net
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "0.0.0.0:8080:80"
+    networks:
+      - pi_net
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  neo4j_logs:
+  garmin_tokens:
+
+networks:
+  pi_net:
+    driver: bridge
